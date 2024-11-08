@@ -7,6 +7,7 @@ pub struct UserData {
     pub user_id: i64,
     pub pisun: i32,
     pub last_command: DateTime<Utc>,
+    pub last_train: DateTime<Utc>,
 }
 
 impl UserData {
@@ -15,6 +16,7 @@ impl UserData {
             user_id,
             pisun: 0,
             last_command: Utc::now() - Duration::days(1),
+            last_train: Utc::now() - Duration::days(1),
         }
     }
 }

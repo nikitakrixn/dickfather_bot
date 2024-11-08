@@ -19,7 +19,9 @@ pub enum Command {
     #[command(description = "Показывает топ 10 пользователей")]
     Top,
     #[command(description = "Случайный анекдот")]
-    Anekdot
+    Anekdot,
+    #[command(description = "Тренировка твоего писюна")]
+    Train,
 }
 
 pub(crate) async fn command_handler(bot: Bot, msg: Message, cmd: Command) -> Result<(), Error> {
@@ -29,6 +31,7 @@ pub(crate) async fn command_handler(bot: Bot, msg: Message, cmd: Command) -> Res
         Command::Size => size_handler(bot, msg, &mut config).await,
         Command::Top => top_handler(bot, msg, &mut config).await,
         Command::Anekdot => joke_handler(bot, msg).await,
+        Command::Train => train_handler(bot, msg, &mut config).await,
     }
 }
 
@@ -105,6 +108,35 @@ async fn joke_handler(bot: Bot, msg: Message) -> Result<(), Error> {
     Ok(())
 }
 
+async fn train_handler(bot: Bot, msg: Message, config: &mut Config) -> Result<(), Error> {
+    let user_id = msg.from.clone().map(|user| user.id.0 as i64).unwrap_or(0);
+    let mut user = config.get_or_create_user(user_id).clone();
+    
+    let now = Utc::now();
+    let can_train = now.date_naive() > user.last_train.date_naive();
+
+    if can_train {
+        let success_chance = rand::thread_rng().gen_bool(0.7); 
+
+        let message = if success_chance {
+            let increase = generate_random_change(1, 5);
+            user.pisun += increase;
+            format!("Успешная тренировка! Твой писюн увеличился на {} см! 💪🍆", increase)
+        } else {
+            let decrease = generate_random_change(1, 3);
+            user.pisun = user.pisun.saturating_sub(decrease);
+            format!("Неудача! Твой писюн уменьшился на {} см. 😔🍆", decrease)
+        };
+
+        user.last_train = now;
+        bot.send_message(msg.chat.id, message).await?;
+        config.update_user(user_id, |u| *u = user);
+    } else {
+        bot.send_message(msg.chat.id, "Ты уже тренировался сегодня! Возвращайся завтра 💪🍆").await?;
+    }
+    
+    Ok(())
+}
 
 fn can_use_command(last_command: DateTime<Utc>) -> bool {
     let now = chrono::Local::now();
