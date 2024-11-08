@@ -116,7 +116,7 @@ async fn train_handler(bot: Bot, msg: Message, config: &mut Config) -> Result<()
     let can_train = now.date_naive() > user.last_train.date_naive();
 
     if can_train {
-        let success_chance = rand::thread_rng().gen_bool(0.7); 
+        let success_chance = if user.pisun > 0 { true } else { rand::thread_rng().gen_bool(0.7) };
 
         let message = if success_chance {
             let increase = generate_random_change(1, 5);
@@ -127,6 +127,10 @@ async fn train_handler(bot: Bot, msg: Message, config: &mut Config) -> Result<()
             user.pisun = user.pisun.saturating_sub(decrease);
             format!("Неудача! Твой писюн уменьшился на {} см. 😔🍆", decrease)
         };
+
+        if user.pisun < 0 {
+            user.pisun = 0;
+        }
 
         user.last_train = now;
         bot.send_message(msg.chat.id, message).await?;
