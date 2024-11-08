@@ -4,6 +4,8 @@ use teloxide::macros::BotCommands;
 use teloxide::prelude::{Message, Requester};
 use chrono::{DateTime, Utc};
 use rand::Rng;
+use reqwest::Client;
+use scraper::{Html, Selector};
 use crate::config::Config;
 use crate::loader::Error;
 
@@ -15,7 +17,9 @@ pub enum Command {
     #[command(description = "Показывает текущий размер")]
     Size,
     #[command(description = "Показывает топ 10 пользователей")]
-    Top
+    Top,
+    #[command(description = "Случайный анекдот")]
+    Anekdot
 }
 
 pub(crate) async fn command_handler(bot: Bot, msg: Message, cmd: Command) -> Result<(), Error> {
@@ -24,6 +28,7 @@ pub(crate) async fn command_handler(bot: Bot, msg: Message, cmd: Command) -> Res
         Command::Pisun => pisun_handler(bot, msg, &mut config).await,
         Command::Size => size_handler(bot, msg, &mut config).await,
         Command::Top => top_handler(bot, msg, &mut config).await,
+        Command::Anekdot => joke_handler(bot, msg).await,
     }
 }
 
@@ -87,6 +92,20 @@ async fn top_handler(bot: Bot, msg: Message, config: &Config) -> Result<(), Erro
     Ok(())
 }
 
+async fn joke_handler(bot: Bot, msg: Message) -> Result<(), Error> {
+    match get_random_joke().await {
+        Ok(joke) => {
+            bot.send_message(msg.chat.id, joke).await?;
+        }
+        Err(e) => {
+            eprintln!("Ошибка при получении анекдота: {}", e);
+            bot.send_message(msg.chat.id, "Не удалось получить анекдот").await?;
+        }
+    }
+    Ok(())
+}
+
+
 fn can_use_command(last_command: DateTime<Utc>) -> bool {
     let now = chrono::Local::now();
     let last_command_date = last_command.date_naive();
@@ -136,5 +155,22 @@ fn get_roll_message(change: i32) -> String {
             abs_change
         ),
         _ => "Что-то пошло не так...".to_string(),
+    }
+}
+
+async fn get_random_joke() -> Result<String, reqwest::Error> {
+    let client = Client::new();
+    let url = "https://baneks.ru/random";
+    let response = client.get(url).send().await?;
+    let body = response.text().await?;
+
+    let document = Html::parse_document(&body);
+    let selector = Selector::parse("article p").unwrap();
+
+    if let Some(element) = document.select(&selector).next() {
+        let joke = element.text().collect::<Vec<_>>().join("\n");
+        Ok(joke)
+    } else {
+        Ok("Не удалось найти анекдот".to_string())
     }
 }
