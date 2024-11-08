@@ -16,7 +16,6 @@ pub async fn run() -> Result<(), Error> {
     config.get_bot().set_my_commands(command_menu.clone()).await?;
 
     let commadn_handler = Update::filter_message()
-        //commandant uchun handler daraxti
         .filter_command::<Command>()
         .endpoint(command_handler);
 

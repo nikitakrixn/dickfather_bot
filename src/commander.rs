@@ -29,18 +29,26 @@ pub(crate) async fn command_handler(bot: Bot, msg: Message, cmd: Command) -> Res
 
 async fn pisun_handler(bot: Bot, msg: Message, config: &mut Config) -> Result<(), Error> {
     let user_id = msg.from.clone().map(|user| user.id.0 as i64).unwrap_or(0);
-    let user = config.get_or_create_user(user_id);
+    let mut user = config.get_or_create_user(user_id).clone();
     
     if can_use_command(user.last_command) {
-        let change = generate_random_change();
+        let change = match user.pisun {
+            0 => generate_random_change(0, 10),
+            _ => generate_random_change(-10, 10),
+        };
         let message = get_roll_message(change);
         
-        config.update_user(user_id, |user| {
-            user.pisun += change;
-            user.last_command = Utc::now();
-        });
-        
-        bot.send_message(msg.chat.id, message).await?;
+        user.pisun += change;
+        user.last_command = Utc::now();
+
+        if user.pisun < 0 {
+            user.pisun = 0;
+            bot.send_message(msg.chat.id, "Мои соболезнования. Сегодня у тебя произошла страшная трагедия, твой писюн отпал.").await?;
+        } else {
+            bot.send_message(msg.chat.id, message).await?;
+        }
+
+        config.update_user(user_id, |u| *u = user);
     } else {
         send_cooldown_message(&bot, msg.chat.id).await?;
     }
@@ -52,7 +60,10 @@ async fn size_handler(bot: Bot, msg: Message, config: &mut Config) -> Result<(),
     let user_id = msg.from.clone().map(|user| user.id.0 as i64).unwrap_or(0);
     let user = config.get_or_create_user(user_id);
     
-    let message = format!("Текущий размер твоего агрегата: {} см", user.pisun);
+    let message = match user.pisun {
+        0 => "На данный момент у тебя нет писюна, неудачник!".to_string(),
+        _ => format!("Текущий размер твоего писюна аж {} см.", user.pisun),
+    };
     bot.send_message(msg.chat.id, message).await?;
     
     Ok(())
@@ -66,7 +77,7 @@ async fn top_handler(bot: Bot, msg: Message, config: &Config) -> Result<(), Erro
     let top = users.iter()
         .take(10)
         .enumerate()
-        .map(|(i, u)| format!("{}. {} см", i + 1, u.pisun))
+        .map(|(i, u)| format!("{}. {} см.", i + 1, u.pisun))
         .collect::<Vec<_>>()
         .join("\n");
     
@@ -77,11 +88,15 @@ async fn top_handler(bot: Bot, msg: Message, config: &Config) -> Result<(), Erro
 }
 
 fn can_use_command(last_command: DateTime<Utc>) -> bool {
-    (Utc::now() - last_command).num_hours() >= 24
+    let now = chrono::Local::now();
+    let last_command_date = last_command.date_naive();
+    let current_date = now.date_naive();
+
+    current_date > last_command_date 
 }
 
-fn generate_random_change() -> i32 {
-    rand::thread_rng().gen_range(-10..=10)
+fn generate_random_change(a: i32, b: i32) -> i32 {
+    rand::thread_rng().gen_range(a..=b)
 }
 
 async fn send_cooldown_message(bot: &Bot, chat_id: ChatId) -> Result<Message, Error> {
