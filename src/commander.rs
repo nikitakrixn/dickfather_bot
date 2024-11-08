@@ -67,18 +67,7 @@ async fn pisun_handler(bot: Bot, msg: Message, config: &mut Config) -> Result<()
 async fn size_handler(bot: Bot, msg: Message, config: &mut Config) -> Result<(), Error> {
     let user_id = msg.from.clone().map(|user| user.id.0 as i64).unwrap_or(0);
     let user = config.get_or_create_user(user_id);
-
-    if rand::thread_rng().gen_bool(0.1) {
-        let event_change = generate_random_change(-5, 5);
-        user.pisun += event_change;
-        let event_message = match event_change {
-            n if n < 0 => format!("Ой! На тебя упал метеорит из анти-виагры! -{} см.", -event_change),
-            n if n > 0 => format!("Тебе улыбнулась удача! Волшебный эльф увеличил твой писюн на {} см!", event_change),
-            _ => "Произошло что-то странное, но твой писюн остался прежним.".to_string(),
-        };
-        bot.send_message(msg.chat.id, event_message).await?;
-    }
-    
+        
     let message = match user.pisun {
         0 => "На данный момент у тебя нет писюна, неудачник!".to_string(),
         _ => format!("Текущий размер твоего писюна аж {} см.", user.pisun),
