@@ -67,7 +67,7 @@ async fn pisun_handler(bot: Bot, msg: Message, config: &mut Config) -> Result<()
 async fn size_handler(bot: Bot, msg: Message, config: &mut Config) -> Result<(), Error> {
     let user_id = msg.from.clone().map(|user| user.id.0 as i64).unwrap_or(0);
     let user = config.get_or_create_user(user_id);
-        
+    
     let message = match user.pisun {
         0 => "На данный момент у тебя нет писюна, неудачник!".to_string(),
         _ => format!("Текущий размер твоего писюна аж {} см.", user.pisun),
