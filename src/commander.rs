@@ -26,6 +26,8 @@ pub enum Command {
     Train,
     #[command(description = "Погода")]
     Weather,
+    #[command(description = "Случайный мем")]
+    Meme
 }
 
 pub(crate) async fn command_handler(bot: Bot, msg: Message, cmd: Command) -> Result<(), Error> {
@@ -37,6 +39,7 @@ pub(crate) async fn command_handler(bot: Bot, msg: Message, cmd: Command) -> Res
         Command::Anekdot => joke_handler(bot, msg).await,
         Command::Train => train_handler(bot, msg, &mut config).await,
         Command::Weather => weather_handler(bot, msg, &mut config).await,
+        Command::Meme => meme_handler(bot, msg).await
     }
 }
 
@@ -301,6 +304,20 @@ fn get_roll_message(change: i32) -> String {
     }
 }
 
+async fn meme_handler(bot: Bot, msg: Message) -> Result<(), Error> {
+    match get_random_meme().await {
+        Ok(meme_url) => {
+            let url = reqwest::Url::parse(&meme_url).expect("Неверный URL");
+            bot.send_photo(msg.chat.id, teloxide::types::InputFile::url(url)).await?;
+        }
+        Err(e) => {
+            eprintln!("Ошибка при получении мема: {}", e);
+            bot.send_message(msg.chat.id, "Не удалось получить мем").await?;
+        }
+    }
+    Ok(())
+}
+
 async fn get_random_joke() -> Result<String, reqwest::Error> {
     let client = Client::new();
     let url = "https://baneks.ru/random";
@@ -426,5 +443,28 @@ fn process_training_result(success: bool, current_size: i32) -> (i32, String) {
             0
         };
         (change, format!("Неудача! {} 😔", if change < 0 { format!("Твой писюн уменьшился на {} см.", change.abs()) } else { "Но твой писюн не пострадал.".to_string() }))
+    }
+}
+
+async fn get_random_meme() -> Result<String, reqwest::Error> {
+    let client = reqwest::Client::new();
+    let url = "https://pda.anekdot.ru/random/mem/";
+    let response = client.get(url).send().await?;
+    
+    if response.status().is_success() {
+        let body = response.text().await?;
+
+        let document = scraper::Html::parse_document(&body);
+        let selector = scraper::Selector::parse(".content img").unwrap();
+
+        let image_element = document.select(&selector).next();
+        if let Some(element) = image_element {
+            let image_url = element.value().attr("src").unwrap_or("");
+            Ok(image_url.to_string())
+        } else {
+            Ok("Не удалось найти изображение".to_string())
+        }
+    } else {
+        Ok(format!("Ошибка при получении мема: {}", response.status()))
     }
 }
