@@ -1,3 +1,4 @@
+use rand::seq::SliceRandom;
 use teloxide::types::ChatId;
 use teloxide::Bot;
 use teloxide::macros::BotCommands;
@@ -8,6 +9,7 @@ use reqwest::Client;
 use scraper::{Html, Selector};
 use crate::config::Config;
 use crate::loader::Error;
+use crate::models::{TrainingExercise, get_training_exercises};
 
 #[derive(BotCommands, Clone)]
 #[command(rename_rule = "lowercase", description = "Эти команды доступны:")]
@@ -119,24 +121,19 @@ async fn train_handler(bot: Bot, msg: Message, config: &mut Config) -> Result<()
     let can_train = now.date_naive() > user.last_train.date_naive();
 
     if can_train {
-        let success_chance = if user.pisun > 0 { true } else { rand::thread_rng().gen_bool(0.7) };
+        let (exercise, result) = generate_training_exercise();
+        let (change, message) = process_training_result(result, user.pisun);
 
-        let message = if success_chance {
-            let increase = generate_random_change(1, 5);
-            user.pisun += increase;
-            format!("Успешная тренировка! Твой писюн увеличился на {} см! 💪🍆", increase)
-        } else {
-            let decrease = generate_random_change(1, 3);
-            user.pisun = user.pisun.saturating_sub(decrease);
-            format!("Неудача! Твой писюн уменьшился на {} см. 😔🍆", decrease)
-        };
-
-        if user.pisun < 0 {
-            user.pisun = 0;
-        }
-
+        user.pisun = (user.pisun + change).max(0);
         user.last_train = now;
-        bot.send_message(msg.chat.id, message).await?;
+
+        let response = format!(
+            "{}\n\n{}",
+            exercise.description,
+            message
+        );
+
+        bot.send_message(msg.chat.id, response).await?;
         config.update_user(user_id, |u| *u = user);
     } else {
         bot.send_message(msg.chat.id, "Ты уже тренировался сегодня! Возвращайся завтра 💪🍆").await?;
@@ -144,7 +141,6 @@ async fn train_handler(bot: Bot, msg: Message, config: &mut Config) -> Result<()
     
     Ok(())
 }
-
 async fn weather_handler(bot: Bot, msg: Message, config: &mut Config) -> Result<(), Error> {
     let url = "https://api.open-meteo.com/v1/forecast?latitude=55&longitude=73.70&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,snowfall,weathercode,windspeed_10m&hourly=temperature_2m,precipitation_probability,weathercode&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&wind_speed_unit=ms&timeformat=unixtime&timezone=auto&forecast_days=3";
 
@@ -407,4 +403,28 @@ fn get_clothing_recommendation(temperature: f64) -> String {
     } else {
         "Одевайся как можно теплее! Зимняя куртка, шарф, теплая шапка и перчатки обязательны."
     }.to_string()
+}
+
+fn generate_training_exercise() -> (TrainingExercise, bool) {
+    let exercises = get_training_exercises();
+    let exercise = exercises.choose(&mut rand::thread_rng()).unwrap().clone();
+    let success = rand::thread_rng().gen_bool(exercise.success_rate);
+
+    (exercise, success)
+}
+
+fn process_training_result(success: bool, current_size: i32) -> (i32, String) {
+    let mut rng = rand::thread_rng();
+
+    if success {
+        let change = rng.gen_range(1..=3);
+        (change, format!("Успех! Твой писюн вырос на {} см. 🎉", change))
+    } else {
+        let change = if current_size > 5 {
+            -rng.gen_range(1..=2)
+        } else {
+            0
+        };
+        (change, format!("Неудача! {} 😔", if change < 0 { format!("Твой писюн уменьшился на {} см.", change.abs()) } else { "Но твой писюн не пострадал.".to_string() }))
+    }
 }
