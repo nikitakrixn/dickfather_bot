@@ -2,7 +2,7 @@ use teloxide::types::ChatId;
 use teloxide::Bot;
 use teloxide::macros::BotCommands;
 use teloxide::prelude::{Message, Requester};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use rand::Rng;
 use reqwest::Client;
 use scraper::{Html, Selector};
@@ -22,6 +22,8 @@ pub enum Command {
     Anekdot,
     #[command(description = "Тренировка твоего писюна")]
     Train,
+    #[command(description = "Погода")]
+    Weather,
 }
 
 pub(crate) async fn command_handler(bot: Bot, msg: Message, cmd: Command) -> Result<(), Error> {
@@ -32,6 +34,7 @@ pub(crate) async fn command_handler(bot: Bot, msg: Message, cmd: Command) -> Res
         Command::Top => top_handler(bot, msg, &mut config).await,
         Command::Anekdot => joke_handler(bot, msg).await,
         Command::Train => train_handler(bot, msg, &mut config).await,
+        Command::Weather => weather_handler(bot, msg).await,
     }
 }
 
@@ -142,6 +145,47 @@ async fn train_handler(bot: Bot, msg: Message, config: &mut Config) -> Result<()
     Ok(())
 }
 
+async fn weather_handler(bot: Bot, msg: Message) -> Result<(), Error> {
+    let url = "https://api.open-meteo.com/v1/forecast?latitude=55&longitude=73.70&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,snowfall&hourly=temperature_2m&daily=temperature_2m_max,temperature_2m_min&wind_speed_unit=ms&timeformat=unixtime&timezone=auto&forecast_days=3";
+
+    let response = reqwest::get(url).await.unwrap();
+
+    let parsed = match response.status().is_success() {
+        true => {
+            let text = response.text().await.unwrap();
+            text
+        }
+        _=> {
+            panic!("error: {:?}", response.status());
+        }
+    };
+
+    let weather_info: serde_json::Value = serde_json::from_str(&parsed).unwrap();
+
+    let current_temp = weather_info["current"]["temperature_2m"].as_f64().unwrap();
+    let apparent_temp = weather_info["current"]["apparent_temperature"].as_f64().unwrap();
+    let humidity = weather_info["current"]["relative_humidity_2m"].as_f64().unwrap();
+    let is_day = weather_info["current"]["is_day"].as_i64().unwrap();
+
+    let weather_emoji = get_weather_emoji(current_temp, is_day);
+
+    let now: DateTime<Local> = Local::now();
+
+    let weather_message = format!(
+        "{} Текущее время: {}\nТекущая температура: {}°C\nОщущается как: {}°C\nВлажность: {}%\n{}",
+        weather_emoji,
+        now.format("%Y-%m-%d %H:%M:%S").to_string(),
+        current_temp,
+        apparent_temp,
+        humidity,
+        if is_day == 1 { "Сейчас день" } else { "Сейчас ночь" }
+    );
+
+    bot.send_message(msg.chat.id, weather_message).await?;
+
+    Ok(())
+}
+
 fn can_use_command(last_command: DateTime<Utc>) -> bool {
     let now = chrono::Local::now();
     let last_command_date = last_command.date_naive();
@@ -213,4 +257,32 @@ async fn get_random_joke() -> Result<String, reqwest::Error> {
     } else {
         Ok("Не удалось найти анекдот".to_string())
     }
+}
+
+fn get_weather_emoji(temperature: f64, is_day: i64) -> String {
+    let mut emoji = String::new();
+
+    if temperature > 30.0 {
+        emoji.push_str("🔥 ");
+    } else if temperature > 20.0 {
+        emoji.push_str("☀️ ");
+    } else if temperature > 10.0 {
+        emoji.push_str("🌤 ");
+    } else if temperature > 0.0 {
+        emoji.push_str("⛅ ");
+    } else if temperature > -10.0 {
+        emoji.push_str("☁️ ");
+    } else if temperature > -20.0 {
+        emoji.push_str("🌨 ");
+    } else {
+        emoji.push_str("❄️ ");
+    }
+
+    if is_day == 1 {
+        emoji.push_str("☀️");
+    } else {
+        emoji.push_str("🌙");
+    }
+
+    emoji
 }
