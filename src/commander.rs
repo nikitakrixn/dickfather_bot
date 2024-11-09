@@ -34,7 +34,7 @@ pub(crate) async fn command_handler(bot: Bot, msg: Message, cmd: Command) -> Res
         Command::Top => top_handler(bot, msg, &mut config).await,
         Command::Anekdot => joke_handler(bot, msg).await,
         Command::Train => train_handler(bot, msg, &mut config).await,
-        Command::Weather => weather_handler(bot, msg).await,
+        Command::Weather => weather_handler(bot, msg, &mut config).await,
     }
 }
 
@@ -145,41 +145,104 @@ async fn train_handler(bot: Bot, msg: Message, config: &mut Config) -> Result<()
     Ok(())
 }
 
-async fn weather_handler(bot: Bot, msg: Message) -> Result<(), Error> {
-    let url = "https://api.open-meteo.com/v1/forecast?latitude=55&longitude=73.70&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,snowfall&hourly=temperature_2m&daily=temperature_2m_max,temperature_2m_min&wind_speed_unit=ms&timeformat=unixtime&timezone=auto&forecast_days=3";
+async fn weather_handler(bot: Bot, msg: Message, config: &mut Config) -> Result<(), Error> {
+    let url = "https://api.open-meteo.com/v1/forecast?latitude=55&longitude=73.70&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,snowfall,weathercode,windspeed_10m&hourly=temperature_2m,precipitation_probability,weathercode&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&wind_speed_unit=ms&timeformat=unixtime&timezone=auto&forecast_days=3";
 
     let response = reqwest::get(url).await.unwrap();
 
-    let parsed = match response.status().is_success() {
+    let weather_info: serde_json::Value = match response.status().is_success() {
         true => {
             let text = response.text().await.unwrap();
-            text
+
+            let data = serde_json::from_str(&text).unwrap();
+            data
         }
-        _=> {
-            panic!("error: {:?}", response.status());
+        _ => {
+            panic!("Oh no! A wild error appears: {:?}", response.status());
         }
     };
 
-    let weather_info: serde_json::Value = serde_json::from_str(&parsed).unwrap();
+    let current = &weather_info["current"];
+    let daily = &weather_info["daily"];
+    let hourly = &weather_info["hourly"];
 
-    let current_temp = weather_info["current"]["temperature_2m"].as_f64().unwrap();
-    let apparent_temp = weather_info["current"]["apparent_temperature"].as_f64().unwrap();
-    let humidity = weather_info["current"]["relative_humidity_2m"].as_f64().unwrap();
-    let is_day = weather_info["current"]["is_day"].as_i64().unwrap();
+    let current_temp = current["temperature_2m"].as_f64().unwrap();
+    let apparent_temp = current["apparent_temperature"].as_f64().unwrap();
+    let humidity = current["relative_humidity_2m"].as_f64().unwrap();
+    let is_day = current["is_day"].as_i64().unwrap();
+    let wind_speed = current["windspeed_10m"].as_f64().unwrap();
+    let weather_code = current["weathercode"].as_i64().unwrap();
 
-    let weather_emoji = get_weather_emoji(current_temp, is_day);
+    let weather_description = get_weather_description(weather_code);
+    let weather_emoji = get_weather_emoji(is_day, weather_code);
 
     let now: DateTime<Local> = Local::now();
 
-    let weather_message = format!(
-        "{} Текущее время: {}\nТекущая температура: {}°C\nОщущается как: {}°C\nВлажность: {}%\n{}",
+    let max_temp = daily["temperature_2m_max"][0].as_f64().unwrap();
+    let min_temp = daily["temperature_2m_min"][0].as_f64().unwrap();
+    let sunrise = DateTime::from_timestamp(daily["sunrise"][0].as_i64().unwrap(), 0).unwrap().with_timezone(&Local);
+    let sunset = DateTime::from_timestamp(daily["sunset"][0].as_i64().unwrap(), 0).unwrap().with_timezone(&Local);
+
+    let clothing_recommendation = get_clothing_recommendation(current_temp);
+
+    let precipitation_prob = hourly["precipitation_probability"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .take(24)
+        .map(|v| v.as_i64().unwrap())
+        .max()
+        .unwrap();
+
+    let mut weather_message = format!(
+        "{} Погода в Омске на {}\n\n\
+        Текущая температура: {:.1}°C (ощущается как {:.1}°C)\n\
+        {}\n\
+        Влажность: {}%\n\
+        Скорость ветра: {:.1} м/с\n\
+        Вероятность осадков: {}%\n\n\
+        Максимальная температура сегодня: {:.1}°C\n\
+        Минимальная температура сегодня: {:.1}°C\n\
+        Восход солнца: {}\n\
+        Закат солнца: {}\n\n\
+        Рекомендация по одежде: {}\n\n\
+        Прогноз на ближайшие дни:\n{}",
         weather_emoji,
-        now.format("%Y-%m-%d %H:%M:%S").to_string(),
+        now.format("%d.%m.%Y %H:%M").to_string(),
         current_temp,
         apparent_temp,
+        weather_description,
         humidity,
-        if is_day == 1 { "Сейчас день" } else { "Сейчас ночь" }
+        wind_speed,
+        precipitation_prob,
+        max_temp,
+        min_temp,
+        sunrise.format("%H:%M").to_string(),
+        sunset.format("%H:%M").to_string(),
+        clothing_recommendation,
+        get_forecast(daily, hourly)
     );
+
+    if rand::thread_rng().gen_bool(0.1) {
+        let user_id = msg.from.clone().map(|user| user.id.0 as i64).unwrap_or(0);
+        let mut user = config.get_or_create_user(user_id).clone();
+        
+        let pisun_change = calculate_pisun_change(current_temp);
+        user.pisun = (user.pisun + pisun_change).max(0);
+        
+        let pisun_message = if pisun_change > 0 {
+            format!("\n\nНеожиданно! Из-за погоды твой писюн вырос на {} см!", pisun_change)
+        } else if pisun_change < 0 {
+            format!("\n\nОй-ой! Из-за погоды твой писюн уменьшился на {} см!", pisun_change.abs())
+        } else {
+            "\n\nПогода не повлияла на размер твоего писюна.".to_string()
+        };
+
+        weather_message.push_str(&pisun_message);
+        weather_message.push_str(&format!("\nТекущий размер твоего писюна: {} см.", user.pisun));
+
+        config.update_user(user_id, |u| *u = user);
+    }
 
     bot.send_message(msg.chat.id, weather_message).await?;
 
@@ -259,30 +322,89 @@ async fn get_random_joke() -> Result<String, reqwest::Error> {
     }
 }
 
-fn get_weather_emoji(temperature: f64, is_day: i64) -> String {
-    let mut emoji = String::new();
+fn get_weather_emoji(is_day: i64, weather_code: i64) -> String {
+    match weather_code {
+        0 => if is_day == 1 { "☀️" } else { "🌙" },
+        1..=3 => if is_day == 1 { "🌤️" } else { "☁️" },
+        45 | 48 => "🌫️",
+        51..=55 | 61..=65 | 80..=82 => "🌧️",
+        56..=57 | 66..=67 => "🌨️",
+        71..=75 | 85..=86 => "❄️",
+        77 => "🌨️",
+        95..=99 => "⛈️",
+        _ => "❓",
+    }.to_string()
+}
 
+fn get_weather_description(code: i64) -> String {
+    match code {
+        0 => "Ясно",
+        1..=3 => "Переменная облачность",
+        45 | 48 => "Туман",
+        51..=55 => "Морось",
+        56..=57 => "Ледяная морось",
+        61..=65 => "Дождь",
+        66..=67 => "Ледяной дождь",
+        71..=75 => "Снег",
+        77 => "Снежные зерна",
+        80..=82 => "Ливневые дожди",
+        85..=86 => "Снежный ливень",
+        95 => "Гроза",
+        96..=99 => "Гроза с градом",
+        _ => "Неизвестные погодные условия",
+    }.to_string()
+}
+
+fn get_forecast(daily: &serde_json::Value, hourly: &serde_json::Value) -> String {
+    let mut forecast = String::new();
+    for i in 1..3 {
+        let date = DateTime::from_timestamp(daily["time"][i].as_i64().unwrap(), 0).unwrap().with_timezone(&Local);
+        let max_temp = daily["temperature_2m_max"][i].as_f64().unwrap();
+        let min_temp = daily["temperature_2m_min"][i].as_f64().unwrap();
+        let weather_code = hourly["weathercode"][i * 24].as_i64().unwrap();
+        let weather_emoji = get_weather_emoji( 1, weather_code);
+        
+        forecast.push_str(&format!(
+            "{} {}: от {:.1}°C до {:.1}°C, {}\n",
+            date.format("%d.%m").to_string(),
+            weather_emoji,
+            min_temp,
+            max_temp,
+            get_weather_description(weather_code)
+        ));
+    }
+    forecast
+}
+
+fn calculate_pisun_change(temperature: f64) -> i32 {
+    let mut rng = rand::thread_rng();
     if temperature > 30.0 {
-        emoji.push_str("🔥 ");
+        rng.gen_range(-2..=0)
     } else if temperature > 20.0 {
-        emoji.push_str("☀️ ");
+        rng.gen_range(0..=2)
     } else if temperature > 10.0 {
-        emoji.push_str("🌤 ");
+        rng.gen_range(1..=3)
     } else if temperature > 0.0 {
-        emoji.push_str("⛅ ");
+        rng.gen_range(0..=2)
     } else if temperature > -10.0 {
-        emoji.push_str("☁️ ");
-    } else if temperature > -20.0 {
-        emoji.push_str("🌨 ");
+        rng.gen_range(-1..=1)
     } else {
-        emoji.push_str("❄️ ");
+        rng.gen_range(-2..=0)
     }
+}
 
-    if is_day == 1 {
-        emoji.push_str("☀️");
+fn get_clothing_recommendation(temperature: f64) -> String {
+    if temperature > 30.0 {
+        "Надевай самую легкую одежду и не забудь солнцезащитный крем!"
+    } else if temperature > 20.0 {
+        "Можно надеть шорты и футболку. Не забудь взять легкую кофту на вечер."
+    } else if temperature > 10.0 {
+        "Время для джинсов и кофты. Легкая куртка не помешает."
+    } else if temperature > 0.0 {
+        "Надевай куртку потеплее, шапку и перчатки."
+    } else if temperature > -10.0 {
+        "Пора доставать зимнюю куртку, теплую шапку и перчатки."
     } else {
-        emoji.push_str("🌙");
-    }
-
-    emoji
+        "Одевайся как можно теплее! Зимняя куртка, шарф, теплая шапка и перчатки обязательны."
+    }.to_string()
 }
