@@ -182,8 +182,6 @@ async fn weather_handler(bot: Bot, msg: Message, config: &mut Config) -> Result<
     let sunrise = DateTime::from_timestamp(daily["sunrise"][0].as_i64().unwrap(), 0).unwrap().with_timezone(&Local);
     let sunset = DateTime::from_timestamp(daily["sunset"][0].as_i64().unwrap(), 0).unwrap().with_timezone(&Local);
 
-    let clothing_recommendation = get_clothing_recommendation(current_temp);
-
     let precipitation_prob = hourly["precipitation_probability"]
         .as_array()
         .unwrap()
@@ -218,7 +216,6 @@ async fn weather_handler(bot: Bot, msg: Message, config: &mut Config) -> Result<
         min_temp,
         sunrise.format("%H:%M").to_string(),
         sunset.format("%H:%M").to_string(),
-        clothing_recommendation,
         get_forecast(daily, hourly)
     );
 
@@ -404,22 +401,6 @@ fn calculate_pisun_change(temperature: f64) -> i32 {
     } else {
         rng.gen_range(-2..=0)
     }
-}
-
-fn get_clothing_recommendation(temperature: f64) -> String {
-    if temperature > 30.0 {
-        "Надевай самую легкую одежду и не забудь солнцезащитный крем!"
-    } else if temperature > 20.0 {
-        "Можно надеть шорты и футболку. Не забудь взять легкую кофту на вечер."
-    } else if temperature > 10.0 {
-        "Время для джинсов и кофты. Легкая куртка не помешает."
-    } else if temperature > 0.0 {
-        "Надевай куртку потеплее, шапку и перчатки."
-    } else if temperature > -10.0 {
-        "Пора доставать зимнюю куртку, теплую шапку и перчатки."
-    } else {
-        "Одевайся как можно теплее! Зимняя куртка, шарф, теплая шапка и перчатки обязательны."
-    }.to_string()
 }
 
 fn generate_training_exercise() -> (TrainingExercise, bool) {
