@@ -202,7 +202,6 @@ async fn weather_handler(bot: Bot, msg: Message, config: &mut Config) -> Result<
         Минимальная температура сегодня: {:.1}°C\n\
         Восход солнца: {}\n\
         Закат солнца: {}\n\n\
-        Рекомендация по одежде: {}\n\n\
         Прогноз на ближайшие дни:\n{}",
         weather_emoji,
         now.format("%d.%m.%Y %H:%M").to_string(),
