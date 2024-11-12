@@ -74,11 +74,21 @@ async fn pisun_handler(bot: Bot, msg: Message, config: &mut Config) -> Result<()
 
 async fn size_handler(bot: Bot, msg: Message, config: &mut Config) -> Result<(), Error> {
     let user_id = msg.from.clone().map(|user| user.id.0 as i64).unwrap_or(0);
-    let user = config.get_or_create_user(user_id);
+    let user = config.get_or_create_user(user_id).clone();
     
+    let all_users = config.get_all_users();
+    let mut sorted_users: Vec<_> = all_users.values().collect();
+    sorted_users.sort_by_key(|u| std::cmp::Reverse(u.pisun));
+
+    let user_rank = sorted_users
+        .iter()
+        .position(|u| u.user_id == user_id)
+        .map(|rank| rank + 1)
+        .unwrap_or(sorted_users.len() + 1);
+
     let message = match user.pisun {
-        0 => "На данный момент у тебя нет писюна, неудачник!".to_string(),
-        _ => format!("Текущий размер твоего писюна аж {} см.", user.pisun),
+        0 => format!("На данный момент у тебя нет писюна, неудачник! Ты занимаешь {} место в рейтинге.", user_rank),
+        _ => format!("Текущий размер твоего писюна аж {} см. Ты занимаешь {} место в рейтинге.", user.pisun, user_rank),
     };
     bot.send_message(msg.chat.id, message).await?;
     
