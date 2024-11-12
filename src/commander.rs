@@ -277,31 +277,91 @@ fn get_roll_message(change: i32) -> String {
     let abs_change = change.abs();
     
     match change {
-        -10..=-7 => format!(
-            "Ахахахах, неудачник. Твой огрызок стал меньше на целых {} см! 🍆📉", 
-            abs_change
-        ),
-        -6..=-3 => format!(
-            "Твой, и не без того маленький пенис, стал меньше аж на {} см. 😔🍆🤏", 
-            abs_change
-        ),
-        -2..=-1 => format!(
-            "Мои спутники зафиксировали уменьшение твоего полового органа на {} см. 😕🍆", 
-            abs_change
-        ),
-        0 => "Нуууу, что тут можно ещё сказать... Твоя пипирка сегодня не выросла 🤔🍆".to_string(),
-        1..=3 => format!(
-            "Поздравляю! Твой член сегодня вырос на целых {} см. 💪🍆", 
-            abs_change
-        ),
-        4..=7 => format!(
-            "Все тяночки вокруг в шоке! Твой гигантский половой орган стал больше на {} см. 🚀🍆", 
-            abs_change
-        ),
-        8..=9 => format!(
-            "*Ах ты читер!* Каким-то образом ты смог увеличить свой писюн на {} см. 👑🍆🏆", 
-            abs_change
-        ),
+        -10..=-7 => {
+            let messages = vec![
+                format!(
+                    "Ахахахах, неудачник. Твой огрызок стал меньше на целых {} см! 🍆📉", 
+                    abs_change
+                ),
+                format!(
+                    "Ахахахах, невдаха. Твій член став меншим на {} см! 🍆📉", 
+                    abs_change
+                )
+            ];
+                messages.choose(&mut rand::thread_rng()).unwrap().to_string()
+        },
+        -6..=-3 => {
+            let messages = vec![
+                format!(
+                    "Твой, и не без того маленький пенис, стал меньше аж на {} см. 😔🍆🤏", 
+                    abs_change
+                ),
+                format!(
+                    "Твій, і не без того маленький член, став меншим аж на {} см. 😔🍆🤏", 
+                    abs_change
+                )
+            ];
+            messages.choose(&mut rand::thread_rng()).unwrap().to_string()
+        },
+        -2..=-1 => {
+            let messages = vec![
+                format!(
+                    "Мои спутники зафиксировали уменьшение твоего полового органа на {} см. 😕🍆", 
+                    abs_change
+                ),
+                format!(
+                    "Мої супутники зафіксували зменшення твого статевого органу на {} см. 😕🍆", 
+                    abs_change
+                )
+            ];
+            messages.choose(&mut rand::thread_rng()).unwrap().to_string()
+        },
+        0 => {
+            let messages = vec![
+                "Нуууу, что тут можно ещё сказать... Твоя пипирка сегодня не выросла 🤔🍆".to_string(),
+                "Нууууу, що тут ще можна сказати... Твій член сьогодні не виріс 🤔🍆".to_string()
+            ];
+            messages.choose(&mut rand::thread_rng()).unwrap().to_string()
+        },
+        1..=3 => {
+            let messages = vec![
+                format!(
+                    "Отличный результат! Твой писюн увеличился на {} см. 🚀", 
+                    abs_change
+                ),
+                format!(
+                    "Вау! Твій член виріс на {} см. 🚀", 
+                    abs_change
+                )
+            ];
+            messages.choose(&mut rand::thread_rng()).unwrap().to_string()
+        },
+        4..=7 => {
+            let messages = vec![
+                format!(
+                    "Все тяночки вокруг в шоке! Твой гигантский половой орган стал больше на {} см. 🚀🍆", 
+                    abs_change
+                ),
+                format!(
+                    "Твій член став значно більше на {} см. 💪",
+                    abs_change
+                )
+            ];
+            messages.choose(&mut rand::thread_rng()).unwrap().to_string()
+        },
+        8..=9 => {
+            let messages = vec![
+                format!(
+                    "*Ах ты читер!* Каким-то образом ты смог увеличить свой писюн на {} см. 👑🍆🏆", 
+                    abs_change
+                ),
+                format!(
+                    "Новий рекорд! Твій член став {} см.",
+                    abs_change
+                )
+            ];
+            messages.choose(&mut rand::thread_rng()).unwrap().to_string()
+        },
         10 => format!(
             "🎉🎉🎉 Поздравляю! +{} см! Ты настоящий гигант! 💪🍆👑", 
             abs_change
