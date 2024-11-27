@@ -38,9 +38,9 @@ impl Config {
         self.users.get_mut(&user_id).unwrap()
     }
 
-    pub fn get_user(&self, user_id: i64) -> Option<&UserData> {
-        self.users.get(&user_id)
-    }
+    // pub fn get_user(&self, user_id: i64) -> Option<&UserData> {
+    //     self.users.get(&user_id)
+    // }
 
     pub fn update_user(&mut self, user_id: i64, update_fn: impl FnOnce(&mut UserData)) {
         if let Some(user) = self.users.get_mut(&user_id) {
