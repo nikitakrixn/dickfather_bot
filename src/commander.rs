@@ -1,9 +1,11 @@
 use rand::seq::SliceRandom;
+use teloxide::payloads::SendPhotoSetters;
 use teloxide::types::ChatId;
+use teloxide::utils::markdown::escape;
 use teloxide::Bot;
 use teloxide::macros::BotCommands;
 use teloxide::prelude::{Message, Requester};
-use chrono::{DateTime, Local, Utc};
+use chrono::{format, DateTime, Local, Utc};
 use rand::Rng;
 use reqwest::Client;
 use scraper::{Html, Selector};
@@ -22,6 +24,8 @@ pub enum Command {
     Top,
     #[command(description = "Показывает текущий размер")]
     Size,
+    #[command(description = "Случайный фильм на вечер")]
+    RandomMovie,
     #[command(description = "Случайный анекдот")]
     Anekdot,
     #[command(description = "Погода")]
@@ -45,7 +49,8 @@ pub(crate) async fn command_handler(bot: Bot, msg: Message, cmd: Command) -> Res
         Command::Weather => weather_handler(bot, msg, &mut config).await,
         Command::Meme => meme_handler(bot, msg).await,
         Command::Wisdom => wisdom_handler(bot, msg).await,
-        Command::Hangover => hangover_handler(bot, msg).await
+        Command::Hangover => hangover_handler(bot, msg).await,
+        Command::RandomMovie => random_movie_handler(bot, msg).await,
     }
 }
 
@@ -424,6 +429,19 @@ async fn hangover_handler(bot: Bot, msg: Message) -> Result<(), Error> {
     Ok(())
 }
 
+async fn random_movie_handler(bot: Bot, msg: Message) -> Result<(), Error> {
+    match get_random_movie().await {
+        Ok((text, poster_url))  => {
+            bot.send_photo(msg.chat.id, teloxide::types::InputFile::url(reqwest::Url::parse(&poster_url).expect("Invalid URL"))).caption(text).parse_mode(teloxide::types::ParseMode::MarkdownV2).await?;
+        },
+        Err(e) => {
+            eprintln!("Ошибка при получении фильма: {}", e);
+            bot.send_message(msg.chat.id, "Не удалось получить фильм").await?;
+        }   
+    }
+    Ok(())
+}
+
 async fn get_random_joke() -> Result<String, reqwest::Error> {
     let client = Client::new();
     let url = "https://baneks.ru/random";
@@ -536,13 +554,13 @@ fn process_training_result(success: bool, current_size: i32) -> (i32, String) {
     }
 }
 
-async fn get_random_meme() -> Result<String, reqwest::Error> {
+async fn get_random_meme() -> Result<String, String> {
     let client = reqwest::Client::new();
     let url = "https://pda.anekdot.ru/random/mem/";
-    let response = client.get(url).send().await?;
+    let response = client.get(url).send().await.map_err(|e | format!("Ошибка при получении мема: {}", e))?;
     
     if response.status().is_success() {
-        let body = response.text().await?;
+        let body = response.text().await.map_err(|e | format!("Ошибка при получении мема: {}", e))?;
 
         let document = scraper::Html::parse_document(&body);
         let selector = scraper::Selector::parse(".content img").unwrap();
@@ -555,6 +573,40 @@ async fn get_random_meme() -> Result<String, reqwest::Error> {
             Ok("Не удалось найти изображение".to_string())
         }
     } else {
-        Ok(format!("Ошибка при получении мема: {}", response.status()))
+        Err(format!("Ошибка при получении мема: {}", response.status()))
+    }
+}
+
+async fn get_random_movie() -> Result<(String, String), String> {
+    let api_key = std::env::var("TMDB_API_KEY").map_err(|e| format!("TMDB_API_KEY не установлен: {}", e))?;
+    let url = format!("https://api.themoviedb.org/3/movie/top_rated?api_key={}&language=ru-RU&page=1", api_key);
+
+    let client = reqwest::Client::new();
+    let response = client.get(&url).send().await.map_err(|e| format!("Ошибка при запросе к TMDB: {}", e))?;
+
+    if response.status().is_success() {
+        let body = response.text().await.map_err(|e| format!("Ошибка при чтении ответа от TMDB: {}", e))?;
+        let json: serde_json::Value = serde_json::from_str(&body).map_err(|e| format!("Ошибка при парсинге JSON: {}", e))?;
+
+        let results = json["results"].as_array().ok_or("В ответе TMDB нет поля 'results'")?;
+        let movie = results.choose(&mut rand::thread_rng()).ok_or("Список фильмов пуст")?;
+
+        let title = movie["title"].as_str().ok_or("В фильме нет поля 'title'")?.to_string();
+        let overview = movie["overview"].as_str().ok_or("В фильме нет поля 'overview'")?.to_string();
+        let poster_path = movie["poster_path"].as_str().ok_or("В фильме нет поля 'poster_path'")?.to_string();
+        let movie_id = movie["id"].as_u64().ok_or("В фильме нет поля 'id'")?;
+
+        let poster_url = format!("https://image.tmdb.org/t/p/w500{}", poster_path);
+        let tmdb_url = format!("https://www.themoviedb.org/movie/{}", movie_id);
+
+        let escaped_title = escape(&title);
+        let escaped_overview = escape(&overview);
+        let escaped_tmdb_url = escape(&tmdb_url);
+
+        let text = format!("🎥 Сегодня рекомендуем посмотреть: *{}* \\({}\\)\n\n{}", escaped_title, escaped_tmdb_url, escaped_overview);
+
+        Ok((text, poster_url))
+    } else {
+        Err(format!("Ошибка при запросе к TMDB: код {}", response.status()))
     }
 }
