@@ -5,7 +5,7 @@ use teloxide::utils::markdown::escape;
 use teloxide::Bot;
 use teloxide::macros::BotCommands;
 use teloxide::prelude::{Message, Requester};
-use chrono::{format, DateTime, Local, Utc};
+use chrono::{DateTime, Local, Utc};
 use rand::Rng;
 use reqwest::Client;
 use scraper::{Html, Selector};
